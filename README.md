@@ -80,7 +80,7 @@ pip install pyinstaller
 pyinstaller --onefile --name video video.py
 ```
 
-## Si estas en Windows y quieres crear un ejecutable para Linux deberas usar WSL
+##### Si estas en Windows y quieres crear un ejecutable para Linux deberas usar WSL
 
 ```bash
 wsl --install
