@@ -65,7 +65,7 @@ except socket.gaierror as e:
 def reconnect_camera():
     while True:
         cap = cv2.VideoCapture(camera_url)
-        cap.set(cv2.CAP_PROP_FPS, 10)  # Intenta limitar a 10 FPS (si la cámara lo permite)
+        cap.set(cv2.CAP_PROP_FPS, 1)  # Intenta limitar a 10 FPS (si la cámara lo permite)
         cap.set(cv2.CAP_PROP_BUFFERSIZE, 3)  # Ajusta el tamaño del búfer
         #cap.set(cv2.CAP_PROP_TIMEOUT, 5000)  # Tiempo de espera en milisegundos
 
@@ -103,69 +103,69 @@ detection_duration = 5       # Duración mínima requerida para enviar alertas (
 last_alert_time = 0          # Tiempo del último envío de mensajes
 alert_interval = 120         # Intervalo de espera entre lotes de mensajes (en segundos)
 
-
 try:
+    last_analysis_time = 0  # Variable para almacenar el tiempo del último análisis
+    analysis_interval = 10  # Intervalo en segundos entre análisis
+
     while True:
-        start_time = time.time()  # Registrar tiempo de inicio de la iteración
+        current_time = time.time()  # Obtener el tiempo actual en segundos desde la época Unix
 
-        try:
-            ret, frame = cap.read()
-            if not ret:
-                raise ValueError("No se pudo leer el fotograma.")
-        except cv2.error as e:
-            print(f"Error de OpenCV: {e}")
-            cap.release()
-            cap = reconnect_camera()
-            continue
-        except Exception as e:
-            print(f"Error al leer el fotograma: {e}")
-            cap.release()
-            cap = reconnect_camera()
-            continue
+        # Solo analizar si han pasado al menos 10 segundos desde el último análisis
+        if current_time - last_analysis_time >= analysis_interval:
+            try:
+                # Leer un fotograma de la cámara
+                ret, frame = cap.read()
+                if not ret:
+                    raise ValueError("No se pudo leer el fotograma.")
+            except cv2.error as e:
+                print(f"Error de OpenCV: {e}")
+                cap.release()
+                cap = reconnect_camera()
+                continue
+            except Exception as e:
+                print(f"Error al leer el fotograma: {e}")
+                cap.release()
+                cap = reconnect_camera()
+                continue
 
-        # Procesar el fotograma con el modelo YOLO
-        results = model(frame, verbose=False)
+            # Mostrar el fotograma (opcional, para verificar lo capturado)
+            cv2.imshow("Vista de la Cámara", frame)
 
-        # Contar cuántas personas y bicicletas son detectadas
-        person_count = 0
-        bicycle_count = 0
-        
-        for result in results:
-            boxes = result.boxes
-            for box in boxes:
-                cls = int(box.cls[0])  # Clase de la detección
-                confidence = box.conf[0]  # Confianza de la detección
-                x1, y1, x2, y2 = map(int, box.xyxy[0])  # Coordenadas del cuadro delimitador
+            # Procesar el fotograma con el modelo YOLO
+            results = model(frame, verbose=False)
 
-                if cls == 0:  # Detectar personas
-                    person_count += 1
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-                elif cls == 1:  # Detectar bicicletas
-                    bicycle_count += 1
-                    cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            # Contar cuántas personas y bicicletas son detectadas
+            person_count = 0
+            bicycle_count = 0
 
-        # Logging de resultados
-        logging.info(f"Personas detectadas: {person_count}, Bicicletas detectadas: {bicycle_count}")
+            for result in results:
+                boxes = result.boxes
+                for box in boxes:
+                    cls = int(box.cls[0])  # Clase de la detección
+                    confidence = box.conf[0]  # Confianza de la detección
+                    x1, y1, x2, y2 = map(int, box.xyxy[0])  # Coordenadas del cuadro delimitador
 
-        # Verificar si se cumplen las condiciones de detección
-        current_time = time.time()
-        if person_count >= 2 and bicycle_count >= 1:
-            if start_detection_time is None:
-                start_detection_time = current_time
-            elif current_time - start_detection_time >= detection_duration:
-                if current_time - last_alert_time >= alert_interval:
-                    send_sms_batch()
-                    last_alert_time = current_time
-        else:
-            start_detection_time = None
+                    if cls == 0:  # Detectar personas
+                        person_count += 1
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+                    elif cls == 1:  # Detectar bicicletas
+                        bicycle_count += 1
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
 
-        # Ajustar el retraso dinámico si es necesario
-        elapsed_time = time.time() - start_time
-        delay = max(0, 0.1 - elapsed_time)
-        time.sleep(delay)
+            # Logging de resultados
+            logging.info(f"Personas detectadas: {person_count}, Bicicletas detectadas: {bicycle_count}")
+
+            # Actualizar el tiempo del último análisis
+            last_analysis_time = current_time
+
+        # Mostrar el fotograma para monitoreo en tiempo real (opcional)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            print("Cerrando la ventana...")
+            break
 
 except KeyboardInterrupt:
     print("\nInterrupción del programa detectada. Cerrando la conexión...")
 finally:
     cap.release()
+    cv2.destroyAllWindows()  # Cerrar las ventanas de OpenCV
     print("Conexión finalizada.")
