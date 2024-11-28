@@ -1,3 +1,4 @@
+import os
 import cv2
 import time
 import socket
@@ -35,6 +36,13 @@ twilio_auth_token = os.getenv('TWILIO_AUTH_TOKEN')
 twilio_phone_number = os.getenv('TWILIO_PHONE_NUMBER')
 to_phone_number = os.getenv('TO_PHONE_NUMBER')
 
+# Obtener la dirección IP del dominio
+dominio = os.getenv('DOMINIO')
+
+# URL de la cámara IP (modifica con tus credenciales y dirección)
+camera_url = os.getenv('CAMARA_URL')
+
+
 # Función para manejar la interrupción del programa con Ctrl + C
 def signal_handler(sig, frame):
     print("\nInterrupción recibida. Cerrando el programa...")
@@ -44,8 +52,6 @@ def signal_handler(sig, frame):
 # Registrar el manejador de señales para Ctrl + C
 signal.signal(signal.SIGINT, signal_handler)
 
-# Obtener la dirección IP del dominio
-dominio = "calle56numero1781.dyndns.org"
 
 try:
     # Obtener la dirección IP
@@ -54,9 +60,6 @@ try:
 except socket.gaierror as e:
     print(f"No se pudo resolver el dominio {dominio}: {e}")
     exit()
-
-# URL de la cámara IP (modifica con tus credenciales y dirección)
-camera_url = "rtsp://segundob:perro1017@calle56numero1781.dyndns.org/Streaming/Channels/101"
 
 # Función para intentar reconectar a la cámara IP
 def reconnect_camera():
