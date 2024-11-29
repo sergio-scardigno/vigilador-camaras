@@ -37,6 +37,9 @@ cd vigilador-camaras
 ```bash
 python3 -m venv venv
 source venv/bin/activate  # En Linux o WSL
+
+.\venv\Scripts\Activate
+
 ```
 
 ### 3. Instala las dependencias:
@@ -78,6 +81,8 @@ pip install pyinstaller
 
 ```bash
 pyinstaller --onefile --name video video.py
+
+
 ```
 
 ##### Si estas en Windows y quieres crear un ejecutable para Linux deberas usar WSL

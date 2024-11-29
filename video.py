@@ -16,7 +16,7 @@ load_dotenv()
 
 
 # Configurar el logger
-logging.basicConfig(filename='log.txt', level=logging.INFO, format='%(asctime)s - %(message)s')
+logging.basicConfig(filename='C:\\Users\\sergi\\Proyectos\\python\\vigilador-camaras\\dist\\log.txt', level=logging.INFO, format='%(asctime)s - %(message)s')
 
 
 # Configurar el logger para guardar los logs en un archivo y mostrar la hora
@@ -80,7 +80,7 @@ def reconnect_camera():
 cap = reconnect_camera()
 
 # Cargar el modelo YOLOv8 preentrenado
-model = YOLO('yolov8n.pt')  # Modelo ligero para tiempo real
+model = YOLO('yolov8m.pt')  # Modelo ligero para tiempo real
 
 # Crear el cliente de Twilio
 client = Client(twilio_sid, twilio_auth_token)
@@ -129,10 +129,10 @@ try:
                 continue
 
             # Mostrar el fotograma (opcional, para verificar lo capturado)
-            cv2.imshow("Vista de la Cámara", frame)
+            # cv2.imshow("Vista de la Cámara", frame)
 
             # Procesar el fotograma con el modelo YOLO
-            results = model(frame, verbose=False)
+            results = model(frame, verbose=False, imgsz=640)
 
             # Contar cuántas personas y bicicletas son detectadas
             person_count = 0

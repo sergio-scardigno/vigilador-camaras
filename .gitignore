@@ -1,5 +1,9 @@
 .env
 log.txt
+*.pt
 /venv/
 /dist/
 /build/
+*.pt
+*.tar
+*.spec
