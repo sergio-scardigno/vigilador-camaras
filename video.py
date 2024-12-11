@@ -329,7 +329,7 @@ try:
         results = model(frame, verbose=False, conf=0.40)
 
         # Para ver el frame
-        cv2.imshow("Vista de la Cámara", frame)
+        #cv2.imshow("Vista de la Cámara", frame)
 
         # Contadores para cada clase
         person_count = 0
@@ -356,14 +356,15 @@ try:
 
         logging.info(f"Personas: {person_count}, Bicicletas: {bicycle_count}, Autos: {car_count}")
         
-        if person_count >= 2 and bicycle_count:
-            if not start_detection_time:
-                start_detection_time = current_time
+        if person_count > 2:
+            if bicycle_count >= 1 or bicycle_count == 0:  # Opcional: siempre cierto en este caso
+                if not start_detection_time:
+                    start_detection_time = current_time
 
-            if current_time - start_detection_time >= TIME_SETTINGS["detection_duration"]:
-                if current_time - last_alert_time >= TIME_SETTINGS["alert_interval"]:
-                    send_sms_batch()
-                    last_alert_time = current_time
+                if current_time - start_detection_time >= TIME_SETTINGS["detection_duration"]:
+                    if current_time - last_alert_time >= TIME_SETTINGS["alert_interval"]:
+                        send_sms_batch()
+                        last_alert_time = current_time
         else:
             start_detection_time = None
 
