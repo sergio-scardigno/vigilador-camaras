@@ -190,9 +190,10 @@ import signal
 import sys
 import logging
 from ultralytics import YOLO
-from twilio.rest import Client
 from dotenv import load_dotenv
-import psutil  # Importamos para detectar instancias
+import psutil  # Para detectar instancias
+from datetime import datetime  # Para manejar fechas
+import requests  # Para interactuar con la API de Telegram
 
 # Verificar si ya hay una instancia en ejecución
 def is_already_running():
@@ -205,7 +206,6 @@ def is_already_running():
 
     return False
 
-
 if is_already_running():
     print("El programa ya está en ejecución. Saliendo...")
     sys.exit()
@@ -213,21 +213,20 @@ if is_already_running():
 # Cargar las variables del archivo .env
 load_dotenv()
 
-# Configurar el logger
+# Configurar el logger con la fecha actual
+log_filename = f"log-{datetime.now().strftime('%Y-%m-%d')}.txt"
 logging.basicConfig(
-    filename='log.txt',          # El archivo donde se guardarán los logs
-    level=logging.INFO,          # Nivel de log (puedes cambiarlo a DEBUG, ERROR, etc.)
-    format='%(asctime)s - %(message)s',  # Formato que incluye la hora
-    datefmt='%Y-%m-%d %H:%M:%S'   # Formato de la hora (Año-Mes-Día Hora:Minuto:Segundo)
+    filename=log_filename,
+    level=logging.INFO,
+    format='%(asctime)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
 )
 
 logging.info("Iniciando la detección de objetos...")
 
 # Obtener las variables de entorno
-twilio_sid = os.getenv('TWILIO_SID')
-twilio_auth_token = os.getenv('TWILIO_AUTH_TOKEN')
-twilio_phone_number = os.getenv('TWILIO_PHONE_NUMBER')
-to_phone_number = os.getenv('TO_PHONE_NUMBER')
+telegram_token = os.getenv('TELEGRAM_TOKEN')
+telegram_chat_ids = os.getenv('TELEGRAM_CHAT_IDS').split(',')
 dominio = os.getenv('DOMINIO')
 camera_url = os.getenv('CAMARA_URL')
 
@@ -270,32 +269,39 @@ cap = reconnect_camera()
 # Cargar el modelo YOLOv8 preentrenado
 model = YOLO('yolov8n.pt')  # Modelo ligero para tiempo real
 
-
-# Cliente Twilio
-client = Client(twilio_sid, twilio_auth_token)
-
-def send_sms_batch():
-    print("¡Enviando 1 mensaje SMS de alerta!")
-    for i in range(1):
-        message = client.messages.create(
-            body="Alerta: Se han detectado al menos 2 personas y 1 bicicleta en la zona monitoreada durante más de 5 segundos.",
-            from_=twilio_phone_number,
-            to=to_phone_number
-        )
-        print(f"Mensaje enviado con SID: {message.sid}")
-        time.sleep(1)
+# Función para enviar mensajes de Telegram con una foto adjunta
+def send_telegram_message_with_photo(text, image_path):
+    print("Enviando mensaje de alerta con foto por Telegram...")
+    for chat_id in telegram_chat_ids:
+        try:
+            url = f"https://api.telegram.org/bot{telegram_token}/sendPhoto"
+            with open(image_path, 'rb') as image_file:
+                payload = {
+                    "chat_id": chat_id.strip(),
+                    "caption": text
+                }
+                files = {
+                    "photo": image_file
+                }
+                response = requests.post(url, data=payload, files=files)
+                if response.status_code == 200:
+                    print(f"Mensaje con foto enviado al chat ID {chat_id.strip()}")
+                else:
+                    print(f"Error al enviar el mensaje con foto al chat ID {chat_id.strip()}: {response.text}")
+                    logging.error(f"Error al enviar el mensaje con foto al chat ID {chat_id.strip()}: {response.text}")
+        except Exception as e:
+            logging.error(f"Excepción al enviar mensaje con foto a Telegram: {e}")
+            print(f"Error al enviar mensaje con foto a Telegram: {e}")
 
 # Centralización de tiempos
 TIME_SETTINGS = {
     "analysis_interval": 0.5,
-    "detection_duration": 2,
+    "detection_duration": 1,
     "alert_interval": 5,
 }
 
 DETECTION_CLASSES = {
     "person": 0,
-    "bicycle": 1,
-    "car": 2
 }
 
 start_detection_time = None
@@ -303,8 +309,11 @@ last_analysis_time = 0
 last_alert_time = 0
 
 # Reducir la frecuencia de análisis
-frame_skip = 5  # Procesar 1 de cada 5 fotogramas
+frame_skip = 3  # Procesar 1 de cada 3 fotogramas
 frame_count = 0
+
+# Contador de cuadros consecutivos con al menos 1 persona
+consecutive_frames_with_people = 0
 
 try:
     while True:
@@ -329,44 +338,38 @@ try:
         results = model(frame, verbose=False, conf=0.40)
 
         # Para ver el frame
-        #cv2.imshow("Vista de la Cámara", frame)
+        cv2.imshow("Vista de la Cámara", frame)
 
         # Contadores para cada clase
         person_count = 0
-        bicycle_count = 0
-        car_count = 0
 
         for result in results:
             if result.boxes is not None:
                 boxes = result.boxes
                 for box in boxes:
                     cls = int(box.cls)
-                    confidence = box.conf.item()
-                    x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-
-                    if cls not in DETECTION_CLASSES.values():
-                        continue
-
                     if cls == DETECTION_CLASSES["person"]:
                         person_count += 1
-                    elif cls == DETECTION_CLASSES["bicycle"]:
-                        bicycle_count += 1
-                    elif cls == DETECTION_CLASSES["car"]:
-                        car_count += 1
 
-        logging.info(f"Personas: {person_count}, Bicicletas: {bicycle_count}, Autos: {car_count}")
-        
-        if person_count > 2:
-            if bicycle_count >= 1 or bicycle_count == 0:  # Opcional: siempre cierto en este caso
-                if not start_detection_time:
-                    start_detection_time = current_time
+        logging.info(f"Personas: {person_count}")
 
-                if current_time - start_detection_time >= TIME_SETTINGS["detection_duration"]:
-                    if current_time - last_alert_time >= TIME_SETTINGS["alert_interval"]:
-                        send_sms_batch()
-                        last_alert_time = current_time
+        # Verificar si hay al menos 1 persona
+        if person_count >= 1:
+            consecutive_frames_with_people += 1
         else:
-            start_detection_time = None
+            consecutive_frames_with_people = 0
+
+        # Enviar mensaje si se cumple la condición y respetar el intervalo entre alertas
+        if consecutive_frames_with_people >= 100 and (current_time - last_alert_time > TIME_SETTINGS["alert_interval"]):
+            image_filename = f"captura-{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.jpg"
+            cv2.imwrite(image_filename, frame)
+            logging.info(f"Frame capturado y guardado como {image_filename}")
+            send_telegram_message_with_photo(
+                "🚨 Alerta: Se han detectado personas en la zona monitoreada durante más de 30 cuadros consecutivos.",
+                image_filename
+            )
+            consecutive_frames_with_people = 0
+            last_alert_time = current_time
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             print("Cerrando la ventana...")
